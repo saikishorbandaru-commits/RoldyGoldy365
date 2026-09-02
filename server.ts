@@ -19,7 +19,7 @@ function getGeminiClient(): GoogleGenAI | null {
   });
 }
 
-// Models for text & multimodal generation according to @google/genai specification
+// Fast Gemini text & multimodal generation with rapid fallback
 async function generateContentWithFallback(
   ai: GoogleGenAI,
   params: {
@@ -27,38 +27,35 @@ async function generateContentWithFallback(
     config?: any;
   }
 ) {
-  // Use official supported models with primary flash-latest / 3.7-flash / 3.1-flash-lite fallback
-  const models = ["gemini-flash-latest", "gemini-3.7-flash", "gemini-3.1-flash-lite"];
+  // Use official supported high-speed models (gemini-flash-latest prioritized)
+  const models = ["gemini-flash-latest", "gemini-3.7-flash"];
   let lastError: any = null;
 
   for (const model of models) {
-    // Retry up to 2 times for transient 503/429 errors per model candidate
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: params.contents,
-          config: params.config,
-        });
-        if (response && response.text) {
-          return response;
-        }
-      } catch (err: any) {
-        lastError = err;
-        const status = err?.status || err?.code || 500;
-        // If it's a 503, 429, or network transient error, pause briefly and retry or advance to next model
-        if (status === 503 || status === 429 || err?.message?.includes("503") || err?.message?.includes("high demand")) {
-          if (attempt === 0) {
-            await new Promise((resolve) => setTimeout(resolve, 400));
-            continue;
-          }
-        }
-        break; // Advance to next fallback model
+    try {
+      // 8 second timeout to allow robust JSON schema responses without hanging
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Model call timed out")), 8000)
+      );
+
+      const apiPromise = ai.models.generateContent({
+        model,
+        contents: params.contents,
+        config: params.config,
+      });
+
+      const response: any = await Promise.race([apiPromise, timeoutPromise]);
+      if (response && response.text) {
+        return response;
       }
+    } catch (err: any) {
+      lastError = err;
+      // Immediately try next model candidate
+      continue;
     }
   }
 
-  throw lastError || new Error("All AI model candidates failed or are temporarily unavailable.");
+  throw lastError || new Error("AI models temporarily unavailable.");
 }
 
 function calculateMetalRate(metalType: string): number {
@@ -189,18 +186,31 @@ STRICT CONSTRAINTS:
         savingsPercent: Math.round(((originalPriceNum - counterOffer) / originalPriceNum) * 100),
       });
     } catch (err: any) {
-      console.error("Bargain API Error:", err?.message || err);
-      // Safe fallback response
+      const errMsg = err?.message || String(err);
+      console.log(`[Bargain Engine] Using local artisan rule engine (${errMsg.includes('429') || errMsg.includes('quota') ? 'API quota limit' : 'offline mode'})`);
+      // Safe, intelligent boutique jeweller negotiation fallback response
       const currentPriceNum = Number(req.body?.currentPrice) || 999;
       const originalPriceNum = Number(req.body?.originalPrice) || currentPriceNum;
       const userBidNum = Number(req.body?.userBid) || Math.round(currentPriceNum * 0.85);
       const floorPrice = Math.max(10, Math.round(currentPriceNum * 0.78));
-      const counter = Math.min(currentPriceNum, Math.max(floorPrice, userBidNum));
+      
+      let isAccepted = false;
+      let counter = currentPriceNum;
+      let reply = "";
+
+      if (userBidNum >= floorPrice) {
+        isAccepted = true;
+        counter = Math.min(currentPriceNum, userBidNum);
+        reply = `Namaste! Because you appreciate authentic handcrafted work, we accept your offer of ₹${counter.toLocaleString('en-IN')}. Deal locked for your cart!`;
+      } else {
+        counter = Math.min(currentPriceNum, Math.max(floorPrice, Math.round((currentPriceNum + userBidNum) / 2)));
+        reply = `Namaste! While ₹${userBidNum.toLocaleString('en-IN')} is below our direct workshop making cost, in the spirit of festivities, the best special price I can do is ₹${counter.toLocaleString('en-IN')} with free velvet pouch. Would you like to lock this?`;
+      }
 
       return res.json({
-        sellerReply: `Namaste! We can finalize this exquisite handcrafted piece for ₹${counter.toLocaleString('en-IN')} with our express doorstep delivery. Deal locked!`,
+        sellerReply: reply,
         counterOffer: counter,
-        isAccepted: true,
+        isAccepted,
         savingsPercent: Math.round(((originalPriceNum - counter) / originalPriceNum) * 100),
         specialPerks: "Authentic Hallmark Guarantee & Velvet Keepsake Box",
       });
@@ -225,20 +235,20 @@ STRICT CONSTRAINTS:
       const wastageValue = grossEstimatedCredit * 0.10;
       const netEstimatedCredit = Math.max(1, Math.round(grossEstimatedCredit - wastageValue));
 
+      if (!imageBase64 || imageBase64.trim() === "") {
+        return res.status(400).json({
+          isJewelleryDetected: false,
+          rejectionReason: "No photo attached. Please attach or capture a clear photo of your old imitation or rold gold scrap jewellery.",
+        });
+      }
+
       const ai = getGeminiClient();
 
-      if (!ai || !imageBase64) {
+      if (!ai) {
+        // When AI is not configured, do NOT auto-accept unverified images
         return res.json({
-          isJewelleryDetected: true,
-          identifiedItem: description || "Old Imitation / Rold Gold Scrap Ornaments",
-          estimatedPurity: metalType,
-          estimatedWeightGrams: weightNum,
-          netCreditValue: netEstimatedCredit,
-          grossCreditValue: Math.round(grossEstimatedCredit),
-          ratePerGram,
-          stoneDeductionPercent: 10,
-          appraisalNotes: `Live visual appraisal complete. Purity & net weight (₹${ratePerGram}/g less 10% wastage) will be verified at doorstep using calibrated precision scale.`,
-          voucherCode: `RG-TRADE-${Math.floor(1000 + Math.random() * 9000)}`,
+          isJewelleryDetected: false,
+          rejectionReason: "Visual AI verification service is temporarily unavailable. Please retry in a few moments or have your scrap inspected physically by the concierge rider.",
         });
       }
 
@@ -255,19 +265,41 @@ STRICT CONSTRAINTS:
         },
       };
 
-      const prompt = `You are the master gemmologist at RoldyGoldy verifying an uploaded photo for old/broken imitation & rold gold scrap jewellery exchange.
+      const prompt = `You are a certified Senior Gemmologist and AI Visual Inspector at RoldyGoldy verifying photos for old broken imitation, rold gold, gold, silver, or metallic scrap jewellery exchange.
 
-CRITICAL FIRST STEP - JEWELLERY VALIDATION:
-Examine the image carefully. Determine if the photo ACTUALLY depicts imitation jewellery, rold gold ornaments, metal links, broken chains, bangles, earrings, anklets, rings, or metal scrap pieces.
-If the image shows a human face, a selfie, pets/animals, food, bottles, shoes, clothing/fabric, electronics, furniture, books, cars, random household objects, scenery, or a blank surface:
-You MUST set "isJewelleryDetected": false, and describe why in "rejectionReason" (e.g. "The uploaded photo shows a laptop/face/beverage instead of old imitation jewellery. Please capture a clear photo of old broken chains, bangles, earrings, or rold gold ornaments.").
+MANDATORY FIRST PRIORITY - STRICT JEWELLERY DETECTION (ZERO TOLERANCE FOR NON-JEWELLERY):
+Scrutinize the uploaded photo with extreme precision.
 
-If it IS valid jewellery or metal ornament scrap:
-Set "isJewelleryDetected": true.
-Declared weight: ${weightNum} grams. Metal category: ${metalType} (Imitation/Rold Gold Scrap). User description: "${description}".
-Imitation scrap rate benchmark: ₹${ratePerGram}/gram with 10% wastage deduction (Net calculated: ₹${netEstimatedCredit} INR).
-Assess the visual condition, polish wear, stone/bead volume, and confirm trade-in discount.
-Return strict JSON matching schema.`;
+YOU MUST REJECT IMMEDIATELY (Set isJewelleryDetected: false) if the photo depicts ANY of the following:
+1. Household bedding, mattresses, pillows, cushions, blankets, bedsheets, sofas, chairs, carpets, curtains, tiles, floors, walls, ceilings.
+2. Human body parts WITHOUT clearly identifiable gold/silver/imitation jewellery ornaments (e.g. bare feet, toes, legs, arms, selfies, faces, hands without rings/bangles).
+3. Footwear or clothing (shoes, sandals, chappals, slippers, socks, shirts, pants, cloth fabric).
+4. Furniture, desks, electronics, laptops, phones, chargers, keyboards, wires, boxes, plastic bottles, food, kitchenware, drinks.
+5. Blurry, out-of-focus, dark, or generic indoor backgrounds where no metallic jewellery pieces are clearly visible.
+
+YOU MAY ONLY ACCEPT (Set isJewelleryDetected: true) if the photo clearly and undeniably shows:
+- Authentic imitation, rold gold, gold, silver, or alloy jewellery items: necklaces, chokers, chains, bangles, kadas, bracelets, rings, earrings, jhumkas, maang tikkas, anklets, mangalsutras, pendants, brooches, or broken metallic ornament scrap links.
+
+IF REJECTED (e.g. Mattress, Pillow, Bare Foot, Furniture, Clothing, Floor):
+- isJewelleryDetected: false
+- rejectionReason: Explicitly name the non-jewellery object detected (e.g. "The uploaded photo depicts a mattress / pillow / bedding fabric instead of jewellery. Please capture a clear photo of old broken chains, bangles, necklaces, or earrings.").
+- identifiedItem: "Non-jewellery item detected"
+- netCreditValue: 0
+- voucherCode: ""
+
+IF ACCEPTED:
+- isJewelleryDetected: true
+- rejectionReason: ""
+- identifiedItem: Specific jewellery items identified in photo
+- estimatedPurity: "${metalType}"
+- estimatedWeightGrams: ${weightNum}
+- netCreditValue: ${netEstimatedCredit}
+- ratePerGram: ${ratePerGram}
+- stoneDeductionPercent: 10
+- appraisalNotes: "Live visual appraisal confirmed. Metal weight and 10% wastage deduction will be certified at your doorstep using calibrated scales."
+- voucherCode: "RG-TRADE-${Math.floor(1000 + Math.random() * 9000)}"
+
+Return STRICT JSON adhering to schema.`;
 
       const response = await generateContentWithFallback(ai, {
         contents: { parts: [imagePart, { text: prompt }] },
@@ -276,9 +308,9 @@ Return strict JSON matching schema.`;
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              isJewelleryDetected: { type: Type.BOOLEAN, description: "True if the image contains actual imitation jewellery, rold gold, chains, bangles, earrings, rings, or scrap metal ornaments. False if it is not jewellery." },
-              rejectionReason: { type: Type.STRING, description: "Clear explanation if the photo was rejected for not containing jewellery" },
-              identifiedItem: { type: Type.STRING, description: "Detailed identification of jewellery in photo" },
+              isJewelleryDetected: { type: Type.BOOLEAN, description: "True ONLY if the photo clearly shows jewellery or metallic ornaments. False for mattress, pillow, bedding, feet, shoes, furniture, or random objects." },
+              rejectionReason: { type: Type.STRING, description: "Detailed explanation why the photo was rejected if not jewellery" },
+              identifiedItem: { type: Type.STRING, description: "Detailed identification of jewellery pieces in photo" },
               estimatedPurity: { type: Type.STRING, description: "Assessed imitation metal finish category" },
               estimatedWeightGrams: { type: Type.NUMBER, description: "Net assessed metal weight in grams" },
               netCreditValue: { type: Type.NUMBER, description: "Final calculated exchange cashback discount in INR (with 10% wastage)" },
@@ -307,7 +339,7 @@ Return strict JSON matching schema.`;
       if (parsed.isJewelleryDetected === false) {
         return res.json({
           isJewelleryDetected: false,
-          rejectionReason: parsed.rejectionReason || "No jewellery or imitation ornaments detected in this photo. Please capture a clear photo of old broken chains, bangles, or rold gold scrap.",
+          rejectionReason: parsed.rejectionReason || "No imitation jewellery or rold gold ornaments detected in this image. Please upload a clear photo of old broken chains, bangles, necklaces, or earrings.",
         });
       }
 
@@ -320,25 +352,12 @@ Return strict JSON matching schema.`;
         voucherCode: parsed.voucherCode || `RG-TRADE-${Math.floor(1000 + Math.random() * 9000)}`,
       });
     } catch (err: any) {
-      console.warn("Appraise Scrap Fallback (using calculated trade-in rate):", err?.message || err);
-      const grams = Number(req.body?.grams) || 50;
-      const metalType = req.body?.metalType || "Rold Gold / 1-Gram Polish Scrap";
-      const ratePerGram = calculateMetalRate(metalType);
-      const grossCredit = grams * ratePerGram;
-      const netCredit = Math.max(1, Math.round(grossCredit * 0.90)); // 10% wastage
-      const description = req.body?.description || "Authentic Imitation Ornaments & Scrap";
-
+      const errMsg = err?.message || String(err);
+      console.log(`[Scrap Appraisal] Handling visual appraisal check: ${errMsg.slice(0, 80)}`);
+      // DO NOT auto-accept unverified images in catch block
       return res.json({
-        isJewelleryDetected: true,
-        identifiedItem: description,
-        estimatedPurity: metalType,
-        estimatedWeightGrams: grams,
-        netCreditValue: netCredit,
-        grossCreditValue: Math.round(grossCredit),
-        ratePerGram,
-        stoneDeductionPercent: 10,
-        appraisalNotes: "Live picture & visual characteristics logged into trade-in ledger. Net weight and 10% wastage verification will be certified at your doorstep using calibrated precision scales.",
-        voucherCode: `RG-TRADE-${Math.floor(1000 + Math.random() * 9000)}`,
+        isJewelleryDetected: false,
+        rejectionReason: "Visual gemmological AI could not verify authentic jewellery in this photo. Please ensure good lighting and upload a clear picture of old broken chains, bangles, or rold gold ornaments.",
       });
     }
   });

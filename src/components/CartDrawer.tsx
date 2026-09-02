@@ -42,7 +42,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   if (!isOpen) return null;
 
   const subtotal = cartItems.reduce((sum, item) => {
-    const price = item.customPrice || item.product.price;
+    const price = item.customPrice || item.product.bargainedPrice || item.product.price;
     return sum + price * item.quantity;
   }, 0);
 
@@ -111,8 +111,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             </div>
           ) : (
             cartItems.map((item) => {
-              const activePrice = item.customPrice || item.product.price;
-              const isBargained = Boolean(item.isBargained || (item.customPrice && item.customPrice < item.product.price));
+              const activePrice = item.customPrice || item.product.bargainedPrice || item.product.price;
+              const isBargained = Boolean(item.isBargained || (item.customPrice && item.customPrice < item.product.price) || (item.product.bargainedPrice && item.product.bargainedPrice < item.product.price));
 
               return (
                 <div 

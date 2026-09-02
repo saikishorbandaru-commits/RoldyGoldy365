@@ -22,14 +22,19 @@ export interface ProductAngle {
 }
 
 export interface PartnerSeller {
-  sellerName: string;
-  storeName: string;
+  sellerName?: string;
+  name?: string;
+  storeName?: string;
+  businessName?: string;
   city: string;
+  state?: string;
   pincode: string;
-  hubName: string;
-  verifiedArtisan: boolean;
-  rating: number;
-  deliveryEta: string;
+  hubName?: string;
+  verifiedArtisan?: boolean;
+  yearsExperience?: number;
+  specialization?: string;
+  rating?: number;
+  deliveryEta?: string;
 }
 
 export interface Product {
@@ -136,6 +141,7 @@ export interface Order {
     metalType: string;
     ratePerGram: number;
   };
+  trialAtHomeValue?: number;
   taxGst?: number;
   deliveryFee?: number;
   total: number;
@@ -148,12 +154,16 @@ export interface Order {
   pincode?: string;
   customerName?: string;
   customerPhone?: string;
+  customerEmail?: string;
+  customerCity?: string;
+  customerState?: string;
   trackingHub?: string;
   courierPartner?: string;
   estimatedDelivery?: string;
   insurancePolicyNumber?: string;
   invoiceNumber?: string;
   returnWindowExpiry?: string;
+  exchangeScrapSlip?: ExchangeScrapData;
 }
 
 export interface UserProfile {

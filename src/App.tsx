@@ -38,18 +38,24 @@ import { LocationSelectorModal } from './components/LocationSelectorModal';
 import { SellerAdBookingModal } from './components/SellerAdBookingModal';
 import { JewelleryMartTourModal } from './components/JewelleryMartTourModal';
 import { detectCurrentLocation, DetectedLocationResult } from './utils/location';
+import { triggerHaptic } from './utils/haptics';
+import { SplashScreen } from './components/SplashScreen';
+import { ArtisanShowcaseModal } from './components/ArtisanShowcaseModal';
+import { BargainPickerModal } from './components/BargainPickerModal';
 
 export default function App() {
   // State
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedArtisanFilter, setSelectedArtisanFilter] = useState<string | null>(null);
   const [trialOnlyFilter, setTrialOnlyFilter] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   
   // Modals & Navigation
   const [activeTab, setActiveTab] = useState<'home' | 'boutique' | 'cart' | 'account'>('home');
   const [isBargainModalOpen, setIsBargainModalOpen] = useState<boolean>(false);
+  const [isBargainPickerOpen, setIsBargainPickerOpen] = useState<boolean>(false);
   const [bargainTargetProduct, setBargainTargetProduct] = useState<Product | null>(null);
   const [isLivePhotoModalOpen, setIsLivePhotoModalOpen] = useState<boolean>(false);
   const [isTryOnModalOpen, setIsTryOnModalOpen] = useState<boolean>(false);
@@ -65,8 +71,10 @@ export default function App() {
   const [isSellerAdModalOpen, setIsSellerAdModalOpen] = useState<boolean>(false);
   const [isMartTourModalOpen, setIsMartTourModalOpen] = useState<boolean>(false);
   const [martTourTargetProduct, setMartTourTargetProduct] = useState<Product | null>(null);
+  const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [isArtisanShowcaseOpen, setIsArtisanShowcaseOpen] = useState<boolean>(false);
 
-  // Active Sponsored Ad Banners (Bookable by local sellers for money)
+  // Active Sponsored Ad Banners
   const [adBanners, setAdBanners] = useState<AdBanner[]>([
     {
       id: 'ad-eluru-1',
@@ -134,7 +142,6 @@ export default function App() {
       }
     }
 
-    // Auto-detect if browser supports geolocation
     if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
       detectCurrentLocation()
         .then((loc) => {
@@ -168,20 +175,50 @@ export default function App() {
     {
       id: 'RGORD84920',
       date: '28 May 2026',
+      time: '02:45 PM',
+      invoiceNumber: 'INV-RG-2026-84920',
       items: [{
         id: INITIAL_PRODUCTS[0].id,
         name: INITIAL_PRODUCTS[0].name,
         price: 3499,
+        originalPrice: 4899,
         quantity: 1,
         image: INITIAL_PRODUCTS[0].image,
+        category: INITIAL_PRODUCTS[0].category,
+        metal: INITIAL_PRODUCTS[0].metal,
+        grossWeight: INITIAL_PRODUCTS[0].grossWeight,
+        netWeight: INITIAL_PRODUCTS[0].netWeight,
+        stone: INITIAL_PRODUCTS[0].stone,
+        sku: 'RG-BRI-P101',
+        partnerSeller: INITIAL_PRODUCTS[0].partnerSeller,
       }],
       subtotal: 3499,
-      exchangeDiscount: 0,
-      total: 3499,
-      paymentMethod: 'UPI',
+      exchangeDiscount: 350,
+      exchangeVoucherDetails: {
+        code: 'EXCH-GOLD-5921',
+        grams: 100,
+        metalType: '1-Gram Imitation Rold Gold Scrap',
+        ratePerGram: 0.35,
+      },
+      trialAtHomeValue: 0,
+      deliveryFee: 0,
+      taxGst: 105,
+      total: 3254,
+      paymentMethod: 'UPI (Instant Netbanking)',
+      paymentTransactionId: 'TXN-UPI-98247192847-HDFC',
+      paymentStatus: 'Paid via UPI',
       status: 'Out for Delivery',
       deliveryOtp: '4812',
       address: '21-1-564, Lakdi Ka Pul, Banjara Hills, Hyderabad - 500101',
+      pincode: '500101',
+      customerName: 'Meera Sharma',
+      customerPhone: '+91 98765 43210',
+      customerEmail: 'meera.sharma@example.com',
+      trackingHub: 'Hyderabad West Central Atelier Hub (Banjara Hills)',
+      courierPartner: 'Roldy Goldy Doorstep Concierge Express (Scale Equipped)',
+      estimatedDelivery: 'Today within 2-4 Hours',
+      insurancePolicyNumber: 'ICICI-LOMBARD-JWL-84920-TRANSIT',
+      returnWindowExpiry: '04 Jun 2026',
     }
   ]);
 
@@ -212,78 +249,85 @@ export default function App() {
   };
 
   // Handlers
-  const handleOpenBargain = (prod: Product) => {
-    setBargainTargetProduct(prod);
+  const handleOpenBargain = (product: Product) => {
+    triggerHaptic('light');
+    setBargainTargetProduct(product);
     setIsBargainModalOpen(true);
   };
 
-  const handleDealLocked = (prod: Product, lockedPrice: number) => {
-    // Update product bargained price
+  const handleDealLocked = (productOrId: Product | string, agreedPrice: number) => {
+    const productId = typeof productOrId === 'string' ? productOrId : productOrId.id;
+    const baseProd = typeof productOrId === 'object' && productOrId?.id
+      ? productOrId
+      : products.find((p) => p.id === productId) || null;
+
+    const updatedProduct = baseProd
+      ? { ...baseProd, bargainedPrice: agreedPrice }
+      : null;
+
     setProducts((prev) =>
-      prev.map((p) => (p.id === prod.id ? { ...p, bargainedPrice: lockedPrice } : p))
+      prev.map((p) => (p.id === productId ? { ...p, bargainedPrice: agreedPrice } : p))
     );
-    if (selectedProduct && selectedProduct.id === prod.id) {
-      setSelectedProduct({ ...selectedProduct, bargainedPrice: lockedPrice });
+    if (selectedProduct && selectedProduct.id === productId) {
+      setSelectedProduct((prev) => (prev ? { ...prev, bargainedPrice: agreedPrice } : null));
     }
+    
+    if (baseProd && updatedProduct) {
+      setBargainHistory((prev) => [
+        {
+          item: baseProd.name,
+          offer: agreedPrice,
+          counter: agreedPrice,
+          date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+        },
+        ...prev,
+      ]);
 
-    // Add / Update in Cart with bargained price
-    setCart((prev) => {
-      const exist = prev.find((item) => item.product.id === prod.id);
-      if (exist) {
-        return prev.map((item) =>
-          item.product.id === prod.id
-            ? { ...item, customPrice: lockedPrice, isBargained: true }
-            : item
-        );
-      }
-      return [...prev, { product: prod, quantity: 1, customPrice: lockedPrice, isBargained: true }];
-    });
+      // Automatically add bargained product to cart with custom price & open cart drawer!
+      setCart((prev) => {
+        const existing = prev.find((item) => item.product.id === productId);
+        if (existing) {
+          return prev.map((item) =>
+            item.product.id === productId
+              ? { ...item, product: updatedProduct, customPrice: agreedPrice, isBargained: true }
+              : item
+          );
+        }
+        return [...prev, { product: updatedProduct, quantity: 1, customPrice: agreedPrice, isBargained: true }];
+      });
 
-    // Record in history
-    setBargainHistory((prev) => [
-      {
-        item: prod.name,
-        offer: lockedPrice,
-        counter: lockedPrice,
-        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
-      },
-      ...prev,
-    ]);
-
-    showToast(`🎉 Deal locked at ₹${lockedPrice.toLocaleString('en-IN')}! Added to Cart.`);
+      setIsCartOpen(true);
+    }
+    showToast(`🎉 Deal locked at ₹${agreedPrice.toLocaleString('en-IN')}! Added to your Cart.`);
   };
 
   const handleScrapValued = (data: ExchangeScrapData) => {
-    setExchangeVoucher(data);
     setExchangeSlips((prev) => [data, ...prev]);
-    showToast(`♻️ Instant Cashback of ₹${data.netCredit.toLocaleString('en-IN')} applied via code ${data.voucherCode}!`);
+    if (!data.isRejected && data.status !== 'Rejected' && data.netCredit > 0) {
+      setExchangeVoucher(data);
+      showToast(`✨ Scrap valued at ₹${data.netCredit}! Voucher ${data.voucherCode} applied.`);
+    } else {
+      showToast(`⚠️ Scrap validation failed: ${data.rejectionReason || 'Non-jewellery item detected.'}`);
+    }
   };
 
-  const handleAddToCart = (prod: Product, isDirectBuy = false) => {
-    const activePrice = prod.bargainedPrice || prod.price;
+  const handleAddToCart = (product: Product, openDrawer: boolean = true) => {
+    triggerHaptic('success');
     setCart((prev) => {
-      const exist = prev.find((item) => item.product.id === prod.id);
-      if (exist) {
+      const existing = prev.find((item) => item.product.id === product.id);
+      if (existing) {
         return prev.map((item) =>
-          item.product.id === prod.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
         );
       }
-      return [
-        ...prev,
-        {
-          product: prod,
-          quantity: 1,
-          customPrice: activePrice,
-          isBargained: Boolean(prod.bargainedPrice && prod.bargainedPrice < prod.price),
-        },
-      ];
+      return [...prev, { product, quantity: 1 }];
     });
 
-    if (isDirectBuy) {
-      setIsCheckoutOpen(true);
-    } else {
+    showToast(`🛍️ Added "${product.name.slice(0, 24)}..." to Cart!`);
+    if (openDrawer) {
       setIsCartOpen(true);
-      showToast(`Added ${prod.name} to Cart.`);
     }
   };
 
@@ -324,21 +368,28 @@ export default function App() {
   const filteredProducts = products.filter((p) => {
     const matchesCat = selectedCategory === 'All' || p.category === selectedCategory;
     const matchesTrial = !trialOnlyFilter || Boolean(p.trialEligible);
+    const matchesArtisan = !selectedArtisanFilter || 
+      (p.partnerSeller && p.partnerSeller.businessName.toLowerCase().includes(selectedArtisanFilter.toLowerCase())) ||
+      (p.partnerSeller && selectedArtisanFilter.toLowerCase().includes(p.partnerSeller.businessName.toLowerCase())) ||
+      (selectedArtisanFilter.toLowerCase().includes('lakshmi') && (p.id === 'p-1' || p.id === 'p-2' || p.id === 'p-8'));
     const matchesSearch =
       qLower === '' ||
       (p.name || '').toLowerCase().includes(qLower) ||
       (p.category || '').toLowerCase().includes(qLower) ||
-      (p.metal || '').toLowerCase().includes(qLower);
-    return matchesCat && matchesTrial && matchesSearch;
+      (p.metal || '').toLowerCase().includes(qLower) ||
+      (p.partnerSeller?.businessName || '').toLowerCase().includes(qLower);
+    return matchesCat && matchesTrial && matchesArtisan && matchesSearch;
   });
 
   const totalTrialEligibleCount = products.filter((p) => p.trialEligible).length;
-
   const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col justify-between font-sans selection:bg-amber-400 selection:text-stone-950">
       
+      {/* Animated Designed Splash Screen */}
+      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-4 inset-x-4 sm:inset-x-auto sm:right-6 z-50 bg-amber-500 text-stone-950 px-4 py-3 rounded-2xl shadow-2xl font-bold text-xs flex items-center gap-2 border border-yellow-300 animate-in fade-in slide-in-from-top duration-200">
@@ -347,8 +398,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Container */}
-      <div className="w-full max-w-4xl mx-auto flex-1 flex flex-col relative bg-stone-950 border-x border-stone-800/60 shadow-2xl">
+      {/* Main Responsive Container */}
+      <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col relative bg-stone-950 border-x border-stone-800/60 shadow-2xl">
         
         {/* Top Header */}
         {!selectedProduct && activeTab !== 'account' && (
@@ -366,6 +417,18 @@ export default function App() {
 
             {/* Quick Utility Actions */}
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsArtisanShowcaseOpen(true);
+                }}
+                className="bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                title="View Certified Artisan Guilds"
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-400" />
+                <span>Artisan Guilds</span>
+              </button>
+
               <button
                 onClick={() => setIsCartOpen(true)}
                 className="relative bg-stone-900 hover:bg-stone-800 text-stone-200 p-2 rounded-xl border border-stone-800 transition-all"
@@ -418,7 +481,7 @@ export default function App() {
             userProfile={userProfile}
             onUpdateProfile={(updated) => {
               setUserProfile(updated);
-              showToast('Profile & picture updated successfully!');
+              showToast('Profile updated successfully!');
             }}
             orders={orders}
             trialBookings={trialBookings}
@@ -427,7 +490,7 @@ export default function App() {
             onOpenLiveScrapUpload={() => setIsLivePhotoModalOpen(true)}
           />
         ) : (
-          <main className="flex-1 p-4 pb-24 space-y-4">
+          <main className="flex-1 p-4 sm:p-5 pb-24 space-y-4">
             
             {/* Pincode & Quick Bar with Live GPS status */}
             <div className="flex items-center justify-between text-xs bg-stone-900/90 border border-stone-800 rounded-2xl p-3 gap-2">
@@ -451,45 +514,40 @@ export default function App() {
                     </span>
                   ) : (
                     <span className="ml-2 bg-stone-800 text-stone-400 text-[9.5px] px-1.5 py-0.5 rounded-sm border border-stone-700">
-                      📦 2-Day Courier
+                      📦 Express Courier
                     </span>
                   )}
                 </div>
               </button>
 
-              <div className="flex items-center gap-2 shrink-0 pl-1">
-                <button
-                  onClick={() => {
-                    triggerHaptic('light');
-                    setIsSellerAdModalOpen(true);
-                  }}
-                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-xs transition-colors"
-                  title="Seller App Info & Artisan Boutique Registration"
-                >
-                  <span>🏬 For Sellers</span>
-                </button>
+              <div className="flex items-center gap-1.5 shrink-0 pl-1">
                 <button
                   onClick={() => {
                     triggerHaptic('light');
                     setTryOnTargetProduct(products[0]);
                     setIsTryOnModalOpen(true);
                   }}
-                  className="text-amber-300 hover:text-amber-200 font-medium flex items-center gap-1 text-xs px-1.5 py-1 rounded-lg bg-stone-950/60 border border-stone-800"
+                  className="text-amber-300 hover:text-amber-200 font-medium flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-xl bg-stone-950/60 border border-amber-500/30 transition-colors"
                 >
                   <span>🪞 3D Try-On</span>
                 </button>
               </div>
             </div>
 
-            {/* Sponsored Seller Ad Banner (Targeted for Sellers) */}
+            {/* Verified Artisan Banner (Direct Redirection to Master Goldsmith Collection) */}
             {adBanners.filter(b => b.active && b.slotType === 'home_top').map(banner => (
               <div 
                 key={banner.id}
-                className="relative overflow-hidden bg-stone-900 border border-amber-500/50 rounded-2xl p-4 shadow-lg group cursor-pointer"
+                className="relative overflow-hidden bg-gradient-to-r from-stone-900 via-stone-900 to-amber-950/30 border border-amber-500/50 rounded-2xl p-4 shadow-lg group cursor-pointer transition-all hover:border-amber-400"
                 onClick={() => {
-                  if (banner.targetCategory) {
-                    setSelectedCategory(banner.targetCategory);
-                    showToast(`📢 Exploring ${banner.businessName}'s ${banner.targetCategory} Collection`);
+                  triggerHaptic('light');
+                  setSelectedArtisanFilter(banner.businessName);
+                  setSelectedCategory('All');
+                  setTrialOnlyFilter(false);
+                  showToast(`👑 Filtered to ${banner.businessName} collections!`);
+                  const el = document.getElementById('product-catalog-section');
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth' });
                   }
                 }}
               >
@@ -497,9 +555,9 @@ export default function App() {
                   <div className="space-y-1.5 flex-1 z-10">
                     <div className="flex items-center gap-2">
                       <span className="text-[9.5px] bg-amber-500 text-stone-950 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                        {banner.tag} · Sponsored
+                        {banner.tag}
                       </span>
-                      <span className="text-[10px] text-stone-400">
+                      <span className="text-[11px] text-stone-400">
                         {banner.businessName} ({banner.city} · {banner.pincode})
                       </span>
                     </div>
@@ -518,11 +576,12 @@ export default function App() {
                         onClick={(e) => {
                           e.stopPropagation();
                           triggerHaptic('light');
-                          setIsSellerAdModalOpen(true);
+                          setIsArtisanShowcaseOpen(true);
                         }}
-                        className="text-[10.5px] text-stone-400 hover:text-amber-300 underline flex items-center gap-0.5"
+                        className="text-[10.5px] text-amber-400 hover:text-amber-300 underline flex items-center gap-0.5"
                       >
-                        <span>🏬 Artisan Partner Info</span>
+                        <Crown className="w-3 h-3 text-amber-400 inline" />
+                        <span>Artisan Guild Info</span>
                       </button>
                     </div>
                   </div>
@@ -557,10 +616,15 @@ export default function App() {
                     Book Trial · ₹99
                   </button>
                   <button
-                    onClick={() => setIsLivePhotoModalOpen(true)}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setSelectedProduct(null);
+                      setActiveTab('account');
+                      showToast('✨ Redirected to Scrap Exchange & Trade-In Ledger in your Account!');
+                    }}
                     className="bg-stone-800 text-stone-200 hover:text-white border border-stone-700 font-bold text-xs px-3.5 py-2 rounded-xl"
                   >
-                    📸 Snap Scrap
+                    ♻️ Scrap Exchange
                   </button>
                 </div>
               </div>
@@ -578,44 +642,52 @@ export default function App() {
             {/* Live Interactive Bargain & Scrap Highlights */}
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div 
-                onClick={() => handleOpenBargain(products[0])}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsBargainPickerOpen(true);
+                }}
                 className="bg-stone-900 border border-stone-800 hover:border-amber-500/50 rounded-2xl p-3.5 cursor-pointer transition-all space-y-1.5 group"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xl">💬</span>
                   <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30">
-                    Live AI
+                    Live AI Negotiator
                   </span>
                 </div>
                 <div className="font-bold text-stone-200 group-hover:text-amber-300 transition-colors">
                   Bargain with Jeweller
                 </div>
                 <p className="text-[11px] text-stone-400 leading-snug">
-                  Negotiate real artisanal discounts on Kundan &amp; Polki sets.
+                  Select any design to negotiate artisanal discounts with Master Ramesh.
                 </p>
               </div>
 
               <div 
-                onClick={() => setIsLivePhotoModalOpen(true)}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setSelectedProduct(null);
+                  setActiveTab('account');
+                  showToast('✨ Redirected to Scrap Exchange & Trade-In Ledger in your Account!');
+                }}
                 className="bg-stone-900 border border-stone-800 hover:border-amber-500/50 rounded-2xl p-3.5 cursor-pointer transition-all space-y-1.5 group"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xl">📸</span>
+                  <span className="text-xl">♻️</span>
                   <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/30">
-                    Instant Credit
+                    Trade-In Credit
                   </span>
                 </div>
                 <div className="font-bold text-stone-200 group-hover:text-emerald-300 transition-colors">
-                  Snap Scrap Photo
+                  Old Scrap Exchange
                 </div>
                 <p className="text-[11px] text-stone-400 leading-snug">
-                  Live camera valuation &amp; trade-in discount on cart.
+                  Trade in old jewellery scrap for instant discount vouchers in Account.
                 </p>
               </div>
             </div>
 
             {/* Search & Categories Bar */}
-            <div className="space-y-2.5 pt-1">
+            <div id="product-catalog-section" className="space-y-2.5 pt-1">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-500" />
                 <input
@@ -633,7 +705,10 @@ export default function App() {
                   {['All', 'Bridal', 'Temple', 'Korean', 'Daily Wear', 'Polki'].map((cat) => (
                     <button
                       key={cat}
-                      onClick={() => setSelectedCategory(cat)}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setSelectedCategory(cat);
+                      }}
                       className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
                         selectedCategory === cat
                           ? 'bg-amber-500 text-stone-950 font-bold shadow-md'
@@ -650,7 +725,6 @@ export default function App() {
                     const nextVal = !trialOnlyFilter;
                     setTrialOnlyFilter(nextVal);
                     if (nextVal && selectedCategory !== 'All') {
-                      // Check if current category has trial items, if not switch to All
                       const hasInCat = products.some(p => p.category === selectedCategory && p.trialEligible);
                       if (!hasInCat) {
                         setSelectedCategory('All');
@@ -667,6 +741,39 @@ export default function App() {
                   <span>👑 Trial@Home Only ({totalTrialEligibleCount})</span>
                 </button>
               </div>
+
+              {/* Active Artisan Filter Banner (if user filtered to a specific guild) */}
+              {selectedArtisanFilter && (
+                <div className="bg-gradient-to-r from-amber-950/60 via-stone-900 to-amber-950/40 border border-amber-500/50 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-lg animate-in fade-in">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold shrink-0">
+                      <Crown className="w-4 h-4" />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">Artisan Guild Filter Active</span>
+                      <h4 className="text-xs font-bold text-stone-100 truncate">{selectedArtisanFilter}</h4>
+                      <span className="text-[11px] text-stone-400">Direct Goldsmith Pricing · 22K Micron Polish</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => setIsArtisanShowcaseOpen(true)}
+                      className="bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-[11px] px-3 py-1.5 rounded-xl shadow-xs transition-colors"
+                    >
+                      Guild Info
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedArtisanFilter(null);
+                        showToast('Showing all jewellery collections');
+                      }}
+                      className="bg-stone-800 hover:bg-stone-700 text-stone-300 text-[11px] font-bold px-2.5 py-1.5 rounded-xl border border-stone-700 transition-colors"
+                    >
+                      ✕ Clear
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Product Catalog Grid */}
@@ -700,13 +807,14 @@ export default function App() {
                         onClick={() => setSelectedCategory('All')}
                         className="bg-amber-500 text-stone-950 font-bold text-xs px-4 py-2 rounded-xl"
                       >
-                        Show All Trial Pieces ({totalTrialEligibleCount})
+                        Show All Pieces ({products.length})
                       </button>
                     )}
                     <button
                       onClick={() => {
                         setTrialOnlyFilter(false);
                         setSelectedCategory('All');
+                        setSelectedArtisanFilter(null);
                         setSearchQuery('');
                       }}
                       className="bg-stone-800 text-stone-200 font-bold text-xs px-4 py-2 rounded-xl border border-stone-700"
@@ -716,88 +824,93 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                   {filteredProducts.map((product) => {
                     const activePrice = product.bargainedPrice || product.price;
                     const isBargained = Boolean(product.bargainedPrice && product.bargainedPrice < product.price);
 
-                  return (
-                    <div
-                      key={product.id}
-                      className="bg-stone-900 border border-stone-800 hover:border-amber-500/40 rounded-2xl overflow-hidden transition-all flex flex-col group"
-                    >
-                      {/* Product Image Stage */}
-                      <div 
-                        onClick={() => setSelectedProduct(product)}
-                        className="relative h-40 sm:h-48 overflow-hidden bg-stone-950 cursor-pointer"
+                    return (
+                      <div
+                        key={product.id}
+                        className="bg-stone-900 border border-stone-800 hover:border-amber-500/40 rounded-2xl overflow-hidden transition-all flex flex-col group shadow-lg"
                       >
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        {product.trialEligible && (
-                          <span className="absolute top-2 left-2 bg-emerald-600/90 text-white text-[9.5px] font-bold px-2 py-0.5 rounded-full shadow-md">
-                            Trial @Home
-                          </span>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setTryOnTargetProduct(product);
-                            setIsTryOnModalOpen(true);
-                          }}
-                          className="absolute bottom-2 right-2 bg-black/70 hover:bg-black text-amber-300 text-[10px] font-bold px-2 py-1 rounded-lg backdrop-blur-xs border border-amber-500/30"
+                        {/* Product Image Stage */}
+                        <div 
+                          onClick={() => setSelectedProduct(product)}
+                          className="relative h-44 sm:h-52 overflow-hidden bg-stone-950 cursor-pointer"
                         >
-                          🪞 Try-On
-                        </button>
-                      </div>
-
-                      {/* Content & Actions */}
-                      <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
-                        <div onClick={() => setSelectedProduct(product)} className="cursor-pointer">
-                          <h3 className="font-semibold text-stone-200 text-xs line-clamp-1 group-hover:text-amber-300 transition-colors">
-                            {product.name}
-                          </h3>
-                          <div className="flex items-baseline gap-1.5 mt-1">
-                            <span className="text-sm font-extrabold text-amber-400">
-                              ₹{activePrice.toLocaleString('en-IN')}
-                            </span>
-                            <span className="text-[11px] text-stone-500 line-through">
-                              ₹{product.originalPrice.toLocaleString('en-IN')}
-                            </span>
-                          </div>
-                          {isBargained && (
-                            <span className="text-[9.5px] text-emerald-400 font-bold block mt-0.5">
-                              ✓ Bargained Price
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          {product.trialEligible && (
+                            <span className="absolute top-2 left-2 bg-emerald-600/90 text-white text-[9.5px] font-bold px-2 py-0.5 rounded-full shadow-md">
+                              Trial @Home
                             </span>
                           )}
-                        </div>
-
-                        {/* Quick Bargain & Buy Buttons */}
-                        <div className="flex items-center gap-1.5 pt-1 border-t border-stone-800/80">
                           <button
-                            onClick={() => handleOpenBargain(product)}
-                            className="flex-1 bg-stone-950 hover:bg-stone-800 text-amber-300 border border-amber-500/30 font-bold text-[10.5px] py-1.5 rounded-xl flex items-center justify-center gap-1"
-                            title="Bargain with Jeweller"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTryOnTargetProduct(product);
+                              setIsTryOnModalOpen(true);
+                            }}
+                            className="absolute bottom-2 right-2 bg-black/70 hover:bg-black text-amber-300 text-[10px] font-bold px-2 py-1 rounded-lg backdrop-blur-xs border border-amber-500/30 shadow-md"
                           >
-                            <MessageSquare className="w-3 h-3" />
-                            <span>Bargain</span>
-                          </button>
-                          <button
-                            onClick={() => handleAddToCart(product, false)}
-                            className="bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-[10.5px] p-1.5 px-2.5 rounded-xl transition-colors"
-                            title="Add to Cart"
-                          >
-                            <ShoppingBag className="w-3.5 h-3.5" />
+                            🪞 Try-On
                           </button>
                         </div>
 
+                        {/* Content & Actions */}
+                        <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                          <div onClick={() => setSelectedProduct(product)} className="cursor-pointer">
+                            <h3 className="font-semibold text-stone-200 text-xs line-clamp-1 group-hover:text-amber-300 transition-colors">
+                              {product.name}
+                            </h3>
+                            <div className="flex items-baseline gap-1.5 mt-1">
+                              <span className="text-sm font-extrabold text-amber-400">
+                                ₹{activePrice.toLocaleString('en-IN')}
+                              </span>
+                              <span className="text-[11px] text-stone-500 line-through">
+                                ₹{product.originalPrice.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                            {isBargained && (
+                              <span className="text-[9.5px] text-emerald-400 font-bold block mt-0.5">
+                                ✓ Bargained Price
+                              </span>
+                            )}
+                            {product.partnerSeller && (
+                              <span className="text-[9.5px] text-stone-400 block truncate mt-0.5">
+                                {product.partnerSeller.businessName}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Quick Bargain & Buy Buttons */}
+                          <div className="flex items-center gap-1.5 pt-1 border-t border-stone-800/80">
+                            <button
+                              onClick={() => handleOpenBargain(product)}
+                              className="flex-1 bg-stone-950 hover:bg-stone-800 text-amber-300 border border-amber-500/30 font-bold text-[10.5px] py-1.5 rounded-xl flex items-center justify-center gap-1"
+                              title="Bargain with Jeweller"
+                            >
+                              <MessageSquare className="w-3 h-3" />
+                              <span>Bargain</span>
+                            </button>
+                            <button
+                              onClick={() => handleAddToCart(product, true)}
+                              className="bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-[10.5px] p-1.5 px-2.5 rounded-xl transition-colors"
+                              title="Add to Cart"
+                            >
+                              <ShoppingBag className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
 
@@ -806,7 +919,7 @@ export default function App() {
 
         {/* Persistent Bottom 4-Tab Navigation */}
         {!selectedProduct && (
-          <nav className="fixed bottom-0 inset-x-0 z-30 bg-stone-950/95 backdrop-blur-md border-t border-stone-800 max-w-4xl mx-auto flex justify-around py-2 px-4 shadow-2xl">
+          <nav className="fixed bottom-0 inset-x-0 z-30 bg-stone-950/95 backdrop-blur-md border-t border-stone-800 max-w-5xl mx-auto flex justify-around py-2 px-4 shadow-2xl">
             <button
               onClick={() => {
                 setSelectedProduct(null);
@@ -880,6 +993,23 @@ export default function App() {
         />
       )}
 
+      {/* 1b. Bargain Piece Selector Picker Modal */}
+      <BargainPickerModal
+        isOpen={isBargainPickerOpen}
+        onClose={() => setIsBargainPickerOpen(false)}
+        products={products}
+        onSelectProductToBargain={(prod) => {
+          setIsBargainPickerOpen(false);
+          handleOpenBargain(prod);
+        }}
+        onBrowseAllCatalog={() => {
+          setIsBargainPickerOpen(false);
+          setSelectedCategory('All');
+          const el = document.getElementById('product-catalog-section');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
+
       {/* 2. Live Photo Upload / Camera Scrap Exchange Modal */}
       {isLivePhotoModalOpen && (
         <LivePhotoUploadModal
@@ -893,6 +1023,7 @@ export default function App() {
       {tryOnTargetProduct && (
         <VirtualTryOnModal
           product={tryOnTargetProduct}
+          catalogProducts={products}
           isOpen={isTryOnModalOpen}
           onClose={() => {
             setIsTryOnModalOpen(false);
@@ -961,7 +1092,7 @@ export default function App() {
         }}
       />
 
-      {/* 8. Profile & 4 Reports Modal */}
+      {/* 8. Profile & Reports Modal */}
       <ProfileReportsModal
         isOpen={isProfileReportsOpen}
         onClose={() => setIsProfileReportsOpen(false)}
@@ -976,7 +1107,7 @@ export default function App() {
         bargainHistory={bargainHistory}
       />
 
-      {/* 8. Interactive GPS & Pincode Location Selector Modal */}
+      {/* 9. Interactive GPS & Pincode Location Selector Modal */}
       <LocationSelectorModal
         isOpen={isLocationModalOpen}
         onClose={() => setIsLocationModalOpen(false)}
@@ -1018,6 +1149,32 @@ export default function App() {
           setIsTrialModalOpen(true);
         }}
         onAddToCart={handleAddToCart}
+      />
+
+      {/* 12. Certified Artisan Guilds & Heritage Showcase Modal */}
+      <ArtisanShowcaseModal
+        isOpen={isArtisanShowcaseOpen}
+        onClose={() => setIsArtisanShowcaseOpen(false)}
+        onSelectCategory={(cat) => {
+          setSelectedCategory(cat);
+          showToast(`Filtered by ${cat} collection`);
+        }}
+        onSelectArtisan={(artisanBusinessName, category) => {
+          setSelectedArtisanFilter(artisanBusinessName);
+          if (category) {
+            setSelectedCategory(category);
+          } else {
+            setSelectedCategory('All');
+          }
+          setTrialOnlyFilter(false);
+          setSelectedProduct(null);
+          setActiveTab('home');
+          showToast(`👑 Showing master collection from ${artisanBusinessName}`);
+          const el = document.getElementById('product-catalog-section');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth' });
+          }
+        }}
       />
 
     </div>

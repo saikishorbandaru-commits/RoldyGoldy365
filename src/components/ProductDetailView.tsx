@@ -49,6 +49,11 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   onOpenMartTour,
   appliedExchangeVoucher,
 }) => {
+  // Always scroll to top immediately when a product is opened
+  React.useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [product.id]);
+
   const angles: ProductAngle[] = product.angles && product.angles.length > 0 ? product.angles : [
     {
       label: 'Front Studio 0°',

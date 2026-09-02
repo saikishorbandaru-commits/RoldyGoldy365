@@ -96,10 +96,14 @@ export const BargainModal: React.FC<BargainModalProps> = ({
     setSelectedTactic('');
     setCustomNote('');
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9500);
+
     try {
       const res = await fetch('/api/bargain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           productName: product.name,
           originalPrice: product.originalPrice,
@@ -110,6 +114,7 @@ export const BargainModal: React.FC<BargainModalProps> = ({
         }),
       });
 
+      clearTimeout(timeoutId);
       const data = await res.json();
       
       // Strict client-side boundary: counter offer can never exceed current product store price
@@ -136,8 +141,8 @@ export const BargainModal: React.FC<BargainModalProps> = ({
       } else if (safeCounter) {
         setBidAmount(safeCounter);
       }
-    } catch (err) {
-      console.error('Bargain request failed:', err);
+    } catch (err: any) {
+      console.warn('Bargain fallback negotiation engaged:', err?.message || err);
       // Smart offline fallback
       const counter = Math.min(product.price, Math.max(Math.round(product.price * 0.82), bidAmount));
       const fallbackMsg: BargainMessage = {
@@ -153,6 +158,7 @@ export const BargainModal: React.FC<BargainModalProps> = ({
       triggerHaptic('success');
       setSavingsPercent(Math.round(((product.originalPrice - counter) / product.originalPrice) * 100));
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };
@@ -209,12 +215,27 @@ export const BargainModal: React.FC<BargainModalProps> = ({
               </div>
             </div>
           </div>
-          {finalLockedPrice && (
+          {finalLockedPrice ? (
             <div className="text-right shrink-0 bg-emerald-950/70 border border-emerald-500/40 px-2.5 py-1 rounded-lg">
               <span className="text-[10px] text-emerald-400 font-bold block">DEAL LOCKED</span>
               <span className="text-sm font-extrabold text-emerald-300">₹{finalLockedPrice.toLocaleString('en-IN')}</span>
             </div>
+          ) : (
+            <div className="text-right shrink-0">
+              <span className="text-[9.5px] bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">
+                🛡️ Seller Floor Price Authorized
+              </span>
+            </div>
           )}
+        </div>
+
+        {/* Transparent Seller Guardrail Note */}
+        <div className="bg-stone-950 px-4 py-2 border-b border-stone-800/80 flex items-center gap-2 text-[11px] text-stone-400">
+          <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span>
+            <strong className="text-stone-300">Artisan Floor Price Protected: </strong>
+            Bargains negotiate automatically within pre-authorized discount limits set by the master artisan.
+          </span>
         </div>
 
         {/* Chat Stream */}

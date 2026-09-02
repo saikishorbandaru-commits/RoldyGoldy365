@@ -20,10 +20,16 @@ import {
   ChevronRight,
   Clock,
   ExternalLink,
-  Info
+  Info,
+  Printer,
+  X,
+  Truck,
+  Navigation,
+  Eye
 } from 'lucide-react';
 import { Order, TrialBooking, ExchangeScrapData, UserProfile } from '../types';
 import { triggerHaptic } from '../utils/haptics';
+import { OrderLiveTrackingModal } from './OrderLiveTrackingModal';
 
 interface AccountViewProps {
   onBack: () => void;
@@ -62,6 +68,9 @@ export const AccountView: React.FC<AccountViewProps> = ({
   const [pincode, setPincode] = useState<string>(userProfile.pincode);
   const [avatarUrl, setAvatarUrl] = useState<string>(userProfile.avatarUrl || '');
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
+  const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
+  const [orderFilter, setOrderFilter] = useState<'all' | 'in_transit' | 'delivered'>('all');
 
   useEffect(() => {
     setName(userProfile.name);
@@ -571,65 +580,324 @@ export const AccountView: React.FC<AccountViewProps> = ({
         )}
 
         {/* ======================================================== */}
-        {/* 3. ORDERS & BILLS SECTION                                 */}
+        {/* 3. ORDERS & BILLS SECTION (COMPREHENSIVE TRANSACTION DOSSIER) */}
         {/* ======================================================== */}
         {activeSection === 'orders' && (
-          <div className="space-y-3">
-            <button
-              onClick={handleBackToMain}
-              className="flex items-center gap-1.5 text-xs font-bold text-stone-400 hover:text-amber-400 mb-1"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Account Overview</span>
-            </button>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                onClick={handleBackToMain}
+                className="flex items-center gap-1.5 text-xs font-bold text-stone-400 hover:text-amber-400"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Account Overview</span>
+              </button>
+              <span className="text-[11px] text-amber-400 font-medium">{orders.length} Order(s) Logged</span>
+            </div>
+
+            {/* Filter Tabs */}
+            {orders.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                <button
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setOrderFilter('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap ${
+                    orderFilter === 'all'
+                      ? 'bg-amber-500 text-stone-950 shadow-md'
+                      : 'bg-stone-900 text-stone-400 hover:text-stone-200 border border-stone-800'
+                  }`}
+                >
+                  All Orders ({orders.length})
+                </button>
+                <button
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setOrderFilter('in_transit');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                    orderFilter === 'in_transit'
+                      ? 'bg-amber-500 text-stone-950 shadow-md'
+                      : 'bg-stone-900 text-stone-400 hover:text-stone-200 border border-stone-800'
+                  }`}
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  <span>In-Transit &amp; Live Tracking ({orders.filter(o => o.status !== 'Delivered').length})</span>
+                </button>
+                <button
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setOrderFilter('delivered');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                    orderFilter === 'delivered'
+                      ? 'bg-amber-500 text-stone-950 shadow-md'
+                      : 'bg-stone-900 text-stone-400 hover:text-stone-200 border border-stone-800'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Delivered ({orders.filter(o => o.status === 'Delivered').length})</span>
+                </button>
+              </div>
+            )}
 
             {orders.length === 0 ? (
               <div className="bg-stone-900 border border-stone-800 rounded-2xl p-10 text-center space-y-2">
                 <Package className="w-10 h-10 text-stone-600 mx-auto" />
                 <h4 className="font-bold text-stone-300 text-sm">No Orders Placed Yet</h4>
-                <p className="text-xs text-stone-500">Your purchased jewellery items and tax invoices will appear here.</p>
+                <p className="text-xs text-stone-500">Your purchased jewellery items and formal tax invoices will appear here.</p>
               </div>
             ) : (
-              orders.map((order) => (
-                <div key={order.id} className="bg-stone-900 border border-stone-800 rounded-2xl p-4 space-y-3 shadow-sm">
-                  <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-                    <div>
-                      <span className="font-bold text-stone-100 font-mono text-xs">{order.id}</span>
-                      <span className="text-[11px] text-stone-400 block">{order.date}</span>
-                    </div>
-                    <span className="text-[10.5px] bg-amber-500/20 text-amber-300 font-bold px-2.5 py-1 rounded-lg border border-amber-500/30">
-                      {order.status}
-                    </span>
-                  </div>
+              orders
+                .filter((order) => {
+                  if (orderFilter === 'in_transit') return order.status !== 'Delivered';
+                  if (orderFilter === 'delivered') return order.status === 'Delivered';
+                  return true;
+                })
+                .map((order) => {
+                  const itemsCount = order.items.reduce((acc, i) => acc + i.quantity, 0);
+                  const isDelivered = order.status === 'Delivered';
 
-                  <div className="space-y-2">
-                    {order.items.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <img src={item.image} alt={item.name} className="w-11 h-11 rounded-xl object-cover border border-stone-800" />
-                          <div>
-                            <div className="font-semibold text-stone-200 text-xs truncate max-w-[220px]">{item.name}</div>
-                            <span className="text-stone-400 text-[11px]">Qty: {item.quantity}</span>
+                  return (
+                    <div key={order.id} className="bg-stone-900 border border-stone-800/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+                      
+                      {/* Header & Status */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-800 pb-3">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-stone-100 text-sm">{order.id}</span>
+                            <span className="text-[10px] bg-stone-800 text-amber-300 font-mono px-2 py-0.5 rounded border border-stone-700">
+                              {order.invoiceNumber || `INV-RG-2026-${order.id.slice(2)}`}
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-400">
+                            <strong>Order Date:</strong> {order.date} {order.time ? `at ${order.time}` : ''}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 ${
+                            isDelivered
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border-amber-500/30 animate-pulse'
+                          }`}>
+                            {isDelivered ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Truck className="w-3.5 h-3.5 text-amber-400" />}
+                            <span>{order.status}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Live GPS Logistics & Rider Tracking Preview Card */}
+                      <div className="bg-gradient-to-r from-stone-950 via-stone-900 to-stone-950 border border-amber-500/30 rounded-xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                            <span className="font-bold text-amber-300 text-xs flex items-center gap-1">
+                              <Navigation className="w-3.5 h-3.5 text-amber-400" /> Live Express Transit Status
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              triggerHaptic('light');
+                              setTrackingOrder(order);
+                            }}
+                            className="text-[11px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold px-2.5 py-1 rounded-lg border border-amber-500/40 flex items-center gap-1 transition-all"
+                          >
+                            <Truck className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Track Live GPS &amp; Route</span>
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                          <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
+                            <span className="text-[10px] text-stone-500 block">Current Stage:</span>
+                            <strong className="text-stone-200 text-xs">{order.status}</strong>
+                          </div>
+                          <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
+                            <span className="text-[10px] text-stone-500 block">Estimated Arrival:</span>
+                            <strong className="text-amber-400 text-xs">{isDelivered ? 'Delivered' : 'Today in 25–35 mins'}</strong>
+                          </div>
+                          <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
+                            <span className="text-[10px] text-stone-500 block">Doorstep Verification OTP:</span>
+                            <strong className="font-mono text-amber-300 text-xs bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">{order.deliveryOtp}</strong>
                           </div>
                         </div>
-                        <span className="font-bold text-amber-400 text-xs">₹{item.price.toLocaleString('en-IN')}</span>
+
+                        <div className="text-[11px] text-stone-400 flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-stone-800">
+                          <span><strong>Courier:</strong> {order.courierPartner || 'Roldy Goldy Concierge Express'} (Rider Suresh Kumar · +91 94401 23456)</span>
+                          <span className="text-emerald-400 font-medium">✓ Tamper-Proof Security Box</span>
+                        </div>
                       </div>
-                    ))}
-                  </div>
 
-                  {order.exchangeDiscount > 0 && (
-                    <div className="text-[11px] text-emerald-400 bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/20 flex justify-between">
-                      <span>Trade-In Scrap Cashback Applied</span>
-                      <span className="font-bold">-₹{order.exchangeDiscount.toLocaleString('en-IN')}</span>
+                      {/* Customer & Delivery Destination Dossier */}
+                      <div className="bg-stone-950/80 border border-stone-800/80 rounded-xl p-3.5 space-y-2 text-xs">
+                        <span className="font-bold text-amber-400 uppercase tracking-wider text-[10px] block flex items-center gap-1">
+                          <User className="w-3 h-3" /> Customer &amp; Delivery Destination Dossier
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-stone-300">
+                          <div>
+                            <span className="text-stone-500 text-[11px]">Billed &amp; Shipped To: </span>
+                            <strong className="text-stone-200">{order.customerName || userProfile.name}</strong>
+                          </div>
+                          <div>
+                            <span className="text-stone-500 text-[11px]">Phone Number: </span>
+                            <strong className="text-stone-200">{order.customerPhone || userProfile.phone}</strong>
+                          </div>
+                          <div>
+                            <span className="text-stone-500 text-[11px]">Email ID: </span>
+                            <strong className="text-stone-200">{order.customerEmail || userProfile.email}</strong>
+                          </div>
+                          <div>
+                            <span className="text-stone-500 text-[11px]">Delivery Verification OTP: </span>
+                            <span className="font-mono bg-amber-500/20 text-amber-300 font-extrabold px-1.5 py-0.5 rounded">
+                              {order.deliveryOtp}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="pt-1 text-stone-300 border-t border-stone-900 flex items-start gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                          <span><strong>Address:</strong> {order.address || userProfile.address} (Pincode: {order.pincode || userProfile.pincode})</span>
+                        </div>
+                      </div>
+
+                      {/* Purchased Products Detailed Specs */}
+                      <div className="space-y-2">
+                        <span className="font-bold text-stone-300 text-xs uppercase tracking-wider block">
+                          Purchased Jewellery Pieces ({itemsCount} Item{itemsCount > 1 ? 's' : ''})
+                        </span>
+                        <div className="space-y-2">
+                          {order.items.map((item) => (
+                            <div key={item.id} className="bg-stone-950 p-3 rounded-xl border border-stone-800/60 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover border border-stone-800 shrink-0" />
+                                <div className="space-y-0.5">
+                                  <div className="font-semibold text-stone-100 text-xs">{item.name}</div>
+                                  <div className="text-[11px] text-stone-400 flex flex-wrap gap-x-2">
+                                    {item.category && <span>Category: {item.category}</span>}
+                                    {item.metal && <span>· Metal: {item.metal}</span>}
+                                    {item.grossWeight && <span>· Weight: {item.grossWeight}</span>}
+                                    {item.stone && <span>· Stone: {item.stone}</span>}
+                                  </div>
+                                  {item.partnerSeller && (
+                                    <div className="text-[10px] text-amber-400/90 font-medium">
+                                      Guild Artisan: {item.partnerSeller.businessName} ({item.partnerSeller.city})
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="font-bold text-amber-400 text-xs">₹{(item.price * item.quantity).toLocaleString('en-IN')}</div>
+                                <span className="text-[10px] text-stone-400">₹{item.price.toLocaleString('en-IN')} &times; {item.quantity}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Financial Ledger & Payment Breakdown */}
+                      <div className="bg-stone-950 p-3.5 rounded-xl border border-stone-800 space-y-2 text-xs">
+                        <span className="font-bold text-stone-300 uppercase tracking-wider text-[10px] block">
+                          Complete Financial &amp; Payment Ledger
+                        </span>
+
+                        <div className="space-y-1.5 text-stone-300">
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Items Gross Value:</span>
+                            <span>₹{order.subtotal.toLocaleString('en-IN')}</span>
+                          </div>
+
+                          {order.exchangeDiscount > 0 && (
+                            <div className="flex justify-between text-emerald-400 bg-emerald-950/30 px-2 py-1.5 rounded-md border border-emerald-500/20">
+                              <div className="space-y-0.5">
+                                <span className="font-bold flex items-center gap-1">
+                                  <RefreshCw className="w-3 h-3" /> Scrap Exchange Trade-In Credit:
+                                </span>
+                                {order.exchangeVoucherDetails && (
+                                  <span className="text-[10px] text-emerald-300 block">
+                                    {order.exchangeVoucherDetails.grams}g {order.exchangeVoucherDetails.metalType} (Voucher: {order.exchangeVoucherDetails.code})
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-bold font-mono">-₹{order.exchangeDiscount.toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+
+                          {order.trialAtHomeValue !== undefined && order.trialAtHomeValue > 0 && (
+                            <div className="flex justify-between text-amber-300 bg-amber-950/20 px-2 py-1 rounded-md border border-amber-500/20">
+                              <span>Trial @Home Concierge Adjustment:</span>
+                              <span className="font-bold">₹{order.trialAtHomeValue.toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Doorstep Insured Express Delivery:</span>
+                            <span className="text-emerald-400 font-semibold">
+                              {order.deliveryFee && order.deliveryFee > 0 ? `₹${order.deliveryFee}` : '₹0 (Free Compliments)'}
+                            </span>
+                          </div>
+
+                          {order.taxGst !== undefined && order.taxGst > 0 && (
+                            <div className="flex justify-between text-stone-400">
+                              <span>GST / Hallmark Luxury Tax (3%):</span>
+                              <span>₹{order.taxGst.toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+
+                          <div className="pt-2 border-t border-stone-800 flex justify-between items-center text-sm font-bold">
+                            <span className="text-stone-100">Total Net Paid:</span>
+                            <span className="text-amber-400 font-mono text-base">₹{order.total.toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+
+                        {/* Payment Ref & Logistics Audit */}
+                        <div className="pt-2 border-t border-stone-900 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-stone-400">
+                          <div>
+                            <span>Payment Mode: </span>
+                            <strong className="text-stone-200">{order.paymentMethod}</strong>
+                          </div>
+                          <div>
+                            <span>Transaction Ref ID: </span>
+                            <strong className="text-stone-200 font-mono">{order.paymentTransactionId || `TXN-UPI-${order.id.slice(2)}`}</strong>
+                          </div>
+                          <div>
+                            <span>Courier Partner: </span>
+                            <strong className="text-stone-200">{order.courierPartner || 'Roldy Goldy Concierge Express'}</strong>
+                          </div>
+                          <div>
+                            <span>Insurance Policy No: </span>
+                            <strong className="text-stone-200 font-mono">{order.insurancePolicyNumber || `ICICI-LOMBARD-JWL-${order.id.slice(2)}`}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons: Live Tracking & Tax Invoice */}
+                      <div className="flex flex-wrap items-center justify-end gap-2.5 pt-1">
+                        <button
+                          onClick={() => {
+                            triggerHaptic('light');
+                            setTrackingOrder(order);
+                          }}
+                          className="bg-stone-950 hover:bg-stone-800 text-stone-200 font-bold text-xs px-3.5 py-2 rounded-xl border border-stone-700 flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+                        >
+                          <Truck className="w-4 h-4 text-amber-400" />
+                          <span>Track Live Delivery</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            triggerHaptic('light');
+                            setSelectedInvoiceOrder(order);
+                          }}
+                          className="bg-stone-950 hover:bg-stone-800 text-amber-300 font-bold text-xs px-4 py-2 rounded-xl border border-amber-500/40 flex items-center gap-2 transition-all shadow-md active:scale-95"
+                        >
+                          <Printer className="w-4 h-4 text-amber-400" />
+                          <span>Print / View Formal Tax Invoice</span>
+                        </button>
+                      </div>
+
                     </div>
-                  )}
-
-                  <div className="pt-2 border-t border-stone-800 flex items-center justify-between font-bold text-xs">
-                    <span className="text-stone-300">Total Paid ({order.paymentMethod}):</span>
-                    <span className="text-base text-amber-400">₹{order.total.toLocaleString('en-IN')}</span>
-                  </div>
-                </div>
-              ))
+                  );
+                })
             )}
           </div>
         )}
@@ -842,6 +1110,184 @@ export const AccountView: React.FC<AccountViewProps> = ({
               <p>We accept imitation, brass, copper, and rold gold jewellery scrap. Exchange value is appraised between ₹0.30 - ₹0.35 per gram with a 10% standard melting and wastage deduction applied as instant cart cashback.</p>
             </div>
           </div>
+        )}
+
+        {/* Formal Tax Invoice Modal */}
+        {selectedInvoiceOrder && (
+          <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in">
+            <div className="bg-stone-950 border border-amber-500/40 rounded-3xl w-full max-w-2xl text-stone-100 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+              
+              {/* Modal Top Bar */}
+              <div className="px-5 py-3.5 bg-stone-900 border-b border-stone-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-amber-400" />
+                  <span className="font-bold text-xs text-amber-300">Official Retail Tax Invoice</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-1.5 text-xs bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print Invoice</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedInvoiceOrder(null)}
+                    className="p-1.5 text-stone-400 hover:text-stone-200 rounded-lg hover:bg-stone-800"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Printable Invoice Body */}
+              <div className="p-6 overflow-y-auto space-y-5 text-stone-200 text-xs bg-stone-950">
+                
+                {/* Header / Brand Letterhead */}
+                <div className="border-b-2 border-amber-500/50 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div>
+                    <h2 className="text-xl font-black text-amber-400 tracking-wider">ROLDY GOLDY</h2>
+                    <p className="text-[11px] text-stone-400">Luxury 1-Gram &amp; 22K Micro-Plated Jewellery Guild</p>
+                    <p className="text-[10px] text-stone-500">Boutique Head: Main Bazar, Eluru - 534001, Andhra Pradesh</p>
+                  </div>
+                  <div className="text-left sm:text-right text-[11px] space-y-0.5 text-stone-400">
+                    <div className="font-bold text-stone-200">GSTIN: <span className="font-mono text-amber-400">37AAECR1029K1Z4</span></div>
+                    <div>BIS Hallmark Reg: <span className="font-mono">HM/2026/0912</span></div>
+                    <div>CIN: <span className="font-mono">U36911AP2026PTC089123</span></div>
+                  </div>
+                </div>
+
+                {/* Invoice Meta Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-stone-900/90 p-3.5 rounded-xl border border-stone-800 text-[11px]">
+                  <div>
+                    <span className="text-stone-500 block text-[10px] uppercase font-bold">Invoice No</span>
+                    <strong className="font-mono text-amber-300">{selectedInvoiceOrder.invoiceNumber || `INV-RG-2026-${selectedInvoiceOrder.id.slice(2)}`}</strong>
+                  </div>
+                  <div>
+                    <span className="text-stone-500 block text-[10px] uppercase font-bold">Order ID</span>
+                    <strong className="font-mono text-stone-200">{selectedInvoiceOrder.id}</strong>
+                  </div>
+                  <div>
+                    <span className="text-stone-500 block text-[10px] uppercase font-bold">Date &amp; Time</span>
+                    <strong className="text-stone-200">{selectedInvoiceOrder.date} {selectedInvoiceOrder.time || '14:30 IST'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-stone-500 block text-[10px] uppercase font-bold">Payment Method</span>
+                    <strong className="text-emerald-400">{selectedInvoiceOrder.paymentMethod}</strong>
+                  </div>
+                </div>
+
+                {/* Billed To */}
+                <div className="bg-stone-900/60 p-3.5 rounded-xl border border-stone-800 text-[11px] space-y-1">
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Customer Billing &amp; Shipping Details</span>
+                  <div className="font-bold text-stone-100 text-xs">{selectedInvoiceOrder.customerName || userProfile.name}</div>
+                  <div className="text-stone-400">Phone: {selectedInvoiceOrder.customerPhone || userProfile.phone} | Email: {selectedInvoiceOrder.customerEmail || userProfile.email}</div>
+                  <div className="text-stone-300">Address: {selectedInvoiceOrder.address || userProfile.address} (Pincode: {selectedInvoiceOrder.pincode || userProfile.pincode})</div>
+                </div>
+
+                {/* Itemized Table */}
+                <div className="border border-stone-800 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-stone-900 text-stone-400 text-[10px] uppercase border-b border-stone-800">
+                      <tr>
+                        <th className="p-2.5">#</th>
+                        <th className="p-2.5">Item Description &amp; Specifications</th>
+                        <th className="p-2.5">HSN Code</th>
+                        <th className="p-2.5 text-center">Qty</th>
+                        <th className="p-2.5 text-right">Unit Price</th>
+                        <th className="p-2.5 text-right">Total (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-800/60">
+                      {selectedInvoiceOrder.items.map((item, idx) => (
+                        <tr key={item.id} className="hover:bg-stone-900/40">
+                          <td className="p-2.5 text-stone-500">{idx + 1}</td>
+                          <td className="p-2.5">
+                            <div className="font-semibold text-stone-100">{item.name}</div>
+                            <div className="text-[10px] text-stone-400">
+                              {item.metal || '22K Rold Gold Finish'} {item.grossWeight ? `· ${item.grossWeight}` : ''} {item.stone ? `· ${item.stone}` : ''}
+                            </div>
+                          </td>
+                          <td className="p-2.5 font-mono text-stone-400">711719</td>
+                          <td className="p-2.5 text-center font-bold text-stone-200">{item.quantity}</td>
+                          <td className="p-2.5 text-right text-stone-300 font-mono">₹{item.price.toLocaleString('en-IN')}</td>
+                          <td className="p-2.5 text-right font-bold text-amber-300 font-mono">₹{(item.price * item.quantity).toLocaleString('en-IN')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Calculation Breakdown */}
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                  <div className="space-y-1.5 text-[10.5px] text-stone-400 max-w-xs">
+                    <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Certified 100% Micro-Plated Durability</span>
+                    </div>
+                    <p>Includes free Doorstep Concierge Transit Insurance (ICICI-LOMBARD-JWL-{selectedInvoiceOrder.id.slice(2)}).</p>
+                    <p className="text-[9.5px] text-stone-500">This is a computer-generated tax invoice issued in accordance with GST Rule 46.</p>
+                  </div>
+
+                  <div className="w-full sm:w-64 space-y-1.5 text-xs bg-stone-900/80 p-3.5 rounded-xl border border-stone-800">
+                    <div className="flex justify-between text-stone-400">
+                      <span>Subtotal:</span>
+                      <span className="font-mono">₹{selectedInvoiceOrder.subtotal.toLocaleString('en-IN')}</span>
+                    </div>
+
+                    {selectedInvoiceOrder.exchangeDiscount > 0 && (
+                      <div className="flex justify-between text-emerald-400 font-semibold">
+                        <span>Scrap Trade-In Credit:</span>
+                        <span className="font-mono">-₹{selectedInvoiceOrder.exchangeDiscount.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between text-stone-400">
+                      <span>Insured Express Freight:</span>
+                      <span className="font-mono text-emerald-400">₹0 (Free)</span>
+                    </div>
+
+                    <div className="flex justify-between text-stone-400">
+                      <span>CGST (1.5%) + SGST (1.5%):</span>
+                      <span className="font-mono">₹{(selectedInvoiceOrder.taxGst || Math.round(selectedInvoiceOrder.total * 0.03)).toLocaleString('en-IN')}</span>
+                    </div>
+
+                    <div className="pt-2 border-t border-stone-800 flex justify-between items-center text-sm font-bold text-amber-400">
+                      <span className="text-stone-100">Total Net Amount:</span>
+                      <span className="font-mono text-base">₹{selectedInvoiceOrder.total.toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Signatures */}
+                <div className="border-t border-stone-800 pt-4 flex items-center justify-between text-[10px] text-stone-500">
+                  <div>
+                    <span>Delivery Verification OTP: </span>
+                    <strong className="font-mono text-amber-400 text-xs">{selectedInvoiceOrder.deliveryOtp}</strong>
+                  </div>
+                  <div className="text-right">
+                    <span className="block font-bold text-stone-300">Authorized Gemmologist &amp; Guild Assayer</span>
+                    <span>Roldy Goldy Quality Assurance Wing</span>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* Live Order Tracking Modal */}
+        {trackingOrder && (
+          <OrderLiveTrackingModal
+            order={trackingOrder}
+            isOpen={Boolean(trackingOrder)}
+            onClose={() => setTrackingOrder(null)}
+            onViewInvoice={(ord) => {
+              setTrackingOrder(null);
+              setSelectedInvoiceOrder(ord);
+            }}
+          />
         )}
 
       </div>
