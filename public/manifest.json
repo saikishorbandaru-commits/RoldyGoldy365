@@ -1,0 +1,18 @@
+{
+  "name": "RoldyGoldy Luxury Jewellery",
+  "short_name": "RoldyGoldy",
+  "description": "Bespoke luxury jewellery boutique with AI Jeweller bargaining, live photo scrap exchange, 3D AR Try-On mirror, and Trial @Home concierge.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0a09",
+  "theme_color": "#0c0a09",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

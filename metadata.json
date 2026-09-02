@@ -1,0 +1,6 @@
+{
+  "name": "RoldyGoldy — Luxury Jewellery & Concierge",
+  "description": "Bespoke luxury jewellery boutique with AI Jeweller bargaining, live photo capture scrap exchange appraisal, 3D AR Try-On mirror, and Trial @Home concierge.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
